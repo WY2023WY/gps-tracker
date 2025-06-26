@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS位置追踪</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#0FC6C2',
+                        success: '#00B42A',
+                        warning: '#FF7D00',
+                        danger: '#F53F3F',
+                        info: '#86909C',
+                        light: '#F2F3F5',
+                        dark: '#1D2129',
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .animate-pulse-slow {
+                animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            }
+            .card-shadow {
+                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+            }
+            .glow {
+                box-shadow: 0 0 15px rgba(22, 93, 255, 0.4);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen font-inter text-dark">
+    <div class="container mx-auto px-4 py-8 max-w-3xl">
+        <!-- 头部 -->
+        <header class="mb-8 text-center">
+            <h1 class="text-[clamp(1.8rem,5vw,2.5rem)] font-bold text-primary mb-2">
+                <i class="fa fa-location-arrow mr-2"></i>GPS位置追踪
+            </h1>
+            <p class="text-gray-600 max-w-lg mx-auto">
+                这个应用可以获取并显示你设备的当前位置、速度和海拔信息。点击下方按钮开始定位。
+            </p>
+        </header>
+
+        <!-- 主要内容 -->
+        <main>
+            <!-- 状态卡片 -->
+            <div id="status-card" class="bg-white rounded-xl p-6 mb-8 card-shadow transition-all duration-500">
+                <div id="loading-indicator" class="text-center py-8">
+                    <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+                    <p class="text-gray-600">正在请求位置信息...</p>
+                    <p class="text-sm text-gray-500 mt-2">请确保你的浏览器有定位权限，并且已开启手机的位置服务。</p>
+                </div>
+                
+                <div id="permission-denied" class="text-center py-8 hidden">
+                    <i class="fa fa-exclamation-triangle text-4xl text-warning mb-4"></i>
+                    <h3 class="text-xl font-semibold text-gray-800 mb-2">权限被拒绝</h3>
+                    <p class="text-gray-600 mb-4">你拒绝了位置访问请求。请刷新页面并允许位置访问以使用此功能。</p>
+                    <button id="retry-button" class="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg transition-all duration-300">
+                        <i class="fa fa-refresh mr-2"></i>重试
+                    </button>
+                </div>
+                
+                <div id="location-unavailable" class="text-center py-8 hidden">
+                    <i class="fa fa-map-o text-4xl text-info mb-4"></i>
+                    <h3 class="text-xl font-semibold text-gray-800 mb-2">位置不可用</h3>
+                    <p class="text-gray-600 mb-4">无法获取你的位置信息。请确保已开启手机的位置服务。</p>
+                    <button id="try-again-button" class="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg transition-all duration-300">
+                        <i class="fa fa-refresh mr-2"></i>再试一次
+                    </button>
+                </div>
+                
+                <div id="location-data" class="hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold text-gray-800">
+                            <i class="fa fa-map-marker text-primary mr-2"></i>当前位置
+                        </h2>
+                        <span id="update-time" class="text-sm text-gray-500">更新于: 刚刚</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-light rounded-lg p-4">
+                            <h3 class="text-sm text-gray-500 mb-1">纬度</h3>
+                            <p id="latitude" class="text-xl font-semibold">--</p>
+                        </div>
+                        <div class="bg-light rounded-lg p-4">
+                            <h3 class="text-sm text-gray-500 mb-1">经度</h3>
+                            <p id="longitude" class="text-xl font-semibold">--</p>
+                        </div>
+                        <div class="bg-light rounded-lg p-4">
+                            <h3 class="text-sm text-gray-500 mb-1">速度</h3>
+                            <p id="speed" class="text-xl font-semibold">--</p>
+                        </div>
+                        <div class="bg-light rounded-lg p-4">
+                            <h3 class="text-sm text-gray-500 mb-1">海拔</h3>
+                            <p id="altitude" class="text-xl font-semibold">--</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-light rounded-lg p-4 mb-6">
+                        <h3 class="text-sm text-gray-500 mb-2">位置精度</h3>
+                        <div class="flex items-center">
+                            <div id="accuracy-bar" class="h-2 bg-gray-200 rounded-full flex-grow mr-2">
+                                <div class="h-full bg-primary rounded-full" style="width: 0%"></div>
+                            </div>
+                            <span id="accuracy-value" class="text-sm font-medium text-gray-700">--</span>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center">
+                        <button id="update-button" class="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg transition-all duration-300">
+                            <i class="fa fa-refresh mr-2"></i>更新位置
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 地图预览 -->
+            <div id="map-container" class="bg-white rounded-xl overflow-hidden card-shadow mb-8 hidden">
+                <div class="p-4 bg-primary/10">
+                    <h2 class="text-lg font-bold text-gray-800">
+                        <i class="fa fa-map text-primary mr-2"></i>位置地图
+                    </h2>
+                </div>
+                <div class="p-4">
+                    <div id="map-placeholder" class="aspect-video bg-gray-100 rounded-lg flex items-center justify-center">
+                        <div class="text-center">
+                            <i class="fa fa-map-o text-5xl text-gray-300 mb-3"></i>
+                            <p class="text-gray-500">地图预览将在这里显示</p>
+                            <p class="text-sm text-gray-400 mt-1">由于安全限制，实时地图需要额外的API密钥</p>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2 text-center">*由于浏览器安全限制，完整地图功能需要额外配置</p>
+                </div>
+            </div>
+            
+            <!-- 信息卡片 -->
+            <div class="bg-white rounded-xl p-6 card-shadow">
+                <h2 class="text-lg font-bold text-gray-800 mb-4">
+                    <i class="fa fa-info-circle text-primary mr-2"></i>使用说明
+                </h2>
+                <ul class="space-y-2 text-gray-600">
+                    <li class="flex items-start">
+                        <i class="fa fa-check-circle text-success mt-1 mr-2"></i>
+                        <span>点击"更新位置"按钮可以获取最新的GPS信息</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fa fa-check-circle text-success mt-1 mr-2"></i>
+                        <span>为了获得准确的位置，建议在户外使用此应用</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fa fa-check-circle text-success mt-1 mr-2"></i>
+                        <span>位置信息包括纬度、经度、速度和海拔（如果可用）</span>
+                    </li>
+                    <li class="flex items-start">
+                        <i class="fa fa-check-circle text-success mt-1 mr-2"></i>
+                        <span>精度条显示位置数据的精确度，数值越小越精确</span>
+                    </li>
+                </ul>
+            </div>
+        </main>
+        
+        <!-- 页脚 -->
+        <footer class="mt-12 text-center text-gray-500 text-sm">
+            <p>© 2025 GPS位置追踪应用 | 所有位置数据仅在本地处理</p>
+        </footer>
+    </div>
+
+    <script>
+        // DOM元素
+        const loadingIndicator = document.getElementById('loading-indicator');
+        const permissionDenied = document.getElementById('permission-denied');
+        const locationUnavailable = document.getElementById('location-unavailable');
+        const locationData = document.getElementById('location-data');
+        const mapContainer = document.getElementById('map-container');
+        
+        const latitudeEl = document.getElementById('latitude');
+        const longitudeEl = document.getElementById('longitude');
+        const speedEl = document.getElementById('speed');
+        const altitudeEl = document.getElementById('altitude');
+        const accuracyEl = document.getElementById('accuracy-value');
+        const accuracyBar = document.getElementById('accuracy-bar').querySelector('div');
+        const updateTimeEl = document.getElementById('update-time');
+        
+        const retryButton = document.getElementById('retry-button');
+        const tryAgainButton = document.getElementById('try-again-button');
+        const updateButton = document.getElementById('update-button');
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查浏览器是否支持地理定位
+            if (!navigator.geolocation) {
+                alert('您的浏览器不支持地理定位功能');
+                loadingIndicator.innerHTML = `
+                    <i class="fa fa-exclamation-circle text-4xl text-danger mb-4"></i>
+                    <h3 class="text-xl font-semibold text-gray-800 mb-2">功能不受支持</h3>
+                    <p class="text-gray-600">您的浏览器不支持地理定位功能。请使用现代浏览器重试。</p>
+                `;
+                return;
+            }
+            
+            // 请求位置
+            requestLocation();
+            
+            // 绑定按钮事件
+            retryButton.addEventListener('click', requestLocation);
+            tryAgainButton.addEventListener('click', requestLocation);
+            updateButton.addEventListener('click', requestLocation);
+        });
+        
+        // 请求位置
+        function requestLocation() {
+            // 重置UI
+            loadingIndicator.classList.remove('hidden');
+            permissionDenied.classList.add('hidden');
+            locationUnavailable.classList.add('hidden');
+            locationData.classList.add('hidden');
+            mapContainer.classList.add('hidden');
+            
+            // 移除之前的状态样式
+            const statusCard = document.getElementById('status-card');
+            statusCard.classList.remove('glow');
+            
+            // 显示加载动画
+            loadingIndicator.innerHTML = `
+                <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+                <p class="text-gray-600">正在获取位置信息...</p>
+                <p class="text-sm text-gray-500 mt-2">请确保你的浏览器有定位权限，并且已开启手机的位置服务。</p>
+            `;
+            
+            // 请求位置
+            navigator.geolocation.getCurrentPosition(
+                handlePositionSuccess,
+                handlePositionError,
+                { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+            );
+        }
+        
+        // 处理位置获取成功
+        function handlePositionSuccess(position) {
+            // 更新UI显示
+            loadingIndicator.classList.add('hidden');
+            locationData.classList.remove('hidden');
+            mapContainer.classList.remove('hidden');
+            
+            // 添加状态样式
+            const statusCard = document.getElementById('status-card');
+            statusCard.classList.add('glow');
+            
+            // 更新位置数据
+            latitudeEl.textContent = position.coords.latitude.toFixed(6);
+            longitudeEl.textContent = position.coords.longitude.toFixed(6);
+            
+            // 速度 (m/s)
+            if (position.coords.speed !== null) {
+                speedEl.textContent = (position.coords.speed * 3.6).toFixed(1) + ' km/h';
+            } else {
+                speedEl.textContent = '无法获取';
+            }
+            
+            // 海拔 (m)
+            if (position.coords.altitude !== null) {
+                altitudeEl.textContent = position.coords.altitude.toFixed(1) + ' m';
+            } else {
+                altitudeEl.textContent = '无法获取';
+            }
+            
+            // 精度 (m)
+            const accuracy = position.coords.accuracy;
+            accuracyEl.textContent = accuracy.toFixed(1) + ' m';
+            
+            // 计算精度条宽度 (精度越高，宽度越小，因为值越小越精确)
+            const maxAccuracy = 100;
+            const width = Math.min(100, (accuracy / maxAccuracy) * 100);
+            accuracyBar.style.width = (100 - width) + '%';
+            
+            // 更新时间
+            const now = new Date();
+            const timeString = now.toLocaleTimeString();
+            updateTimeEl.textContent = `更新于: ${timeString}`;
+            
+            // 创建地图预览
+            createMapPreview(position.coords.latitude, position.coords.longitude);
+        }
+        
+        // 处理位置获取错误
+        function handlePositionError(error) {
+            loadingIndicator.classList.add('hidden');
+            
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    permissionDenied.classList.remove('hidden');
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    locationUnavailable.classList.remove('hidden');
+                    break;
+                case error.TIMEOUT:
+                    locationUnavailable.classList.remove('hidden');
+                    locationUnavailable.querySelector('p').textContent = '获取位置超时。请确保已开启手机的位置服务。';
+                    break;
+                default:
+                    locationUnavailable.classList.remove('hidden');
+                    locationUnavailable.querySelector('p').textContent = '发生未知错误，无法获取位置信息。';
+                    break;
+            }
+        }
+        
+        // 创建地图预览
+        function createMapPreview(latitude, longitude) {
+            const mapPlaceholder = document.getElementById('map-placeholder');
+            
+            // 这里使用OpenStreetMap的静态地图API创建预览
+            // 注意：在实际应用中，你可能需要使用更专业的地图服务
+            mapPlaceholder.innerHTML = `
+                <img 
+                    src="https://www.openstreetmap.org/export/embed.html?bbox=${longitude-0.01}%2C${latitude-0.01}%2C${longitude+0.01}%2C${latitude+0.01}&amp;layer=mapnik" 
+                    alt="位置地图预览" 
+                    class="w-full h-full object-cover rounded-lg"
+                />
+            `;
+        }
+    </script>
+</body>
+</html>
+    
